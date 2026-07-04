@@ -187,6 +187,24 @@ describe('OidcService', () => {
       );
     });
 
+    it('accepts the default mobile redirect URI (bookorbit://oauth2-callback)', async () => {
+      const { service, identityRepo, userService, authService } = makeService();
+      const user = { id: 5, username: 'u1', active: true, permissions: [] };
+      identityRepo.findByProviderAndSubject.mockResolvedValue({ userId: 5 });
+      userService.findById.mockResolvedValue(user);
+      await expect(service.handleCallback({ ...BASE_CALLBACK, redirectUri: 'bookorbit://oauth2-callback' }, {} as never)).resolves.toMatchObject({
+        mode: 'login',
+      });
+      expect(authService.issueTokensForUser).toHaveBeenCalled();
+    });
+
+    it('rejects an unknown mobile redirect URI', async () => {
+      const { service } = makeService();
+      await expect(service.handleCallback({ ...BASE_CALLBACK, redirectUri: 'evil://oauth2-callback' }, {} as never)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
     it('rejects callback when extracted subject is missing', async () => {
       const { service, claimExtractor } = makeService();
       claimExtractor.extract.mockReturnValue({ subject: '', username: 'u1', name: 'User One', email: 'u1@example.com', groups: [] });

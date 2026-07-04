@@ -32,19 +32,11 @@ function toThrowable(error: unknown, fallbackMessage: string): Error {
   return error instanceof Error ? error : new UnauthorizedException(fallbackMessage);
 }
 
-function normalizeRedirectUri(raw: string): string {
-  try {
-    const u = new URL(raw);
-    return u.origin + u.pathname;
-  } catch {
-    return raw;
-  }
-}
-
 @Injectable()
 export class OidcService {
   private readonly logger = new Logger(OidcService.name);
   private readonly appUrl: string;
+  private readonly allowedRedirectUris: string[];
 
   constructor(
     private readonly providerService: OidcProviderService,
@@ -63,6 +55,22 @@ export class OidcService {
     private readonly configService: ConfigService,
   ) {
     this.appUrl = (this.configService.get<string>('app.appUrl') ?? 'http://localhost:5173').replace(/\/$/, '');
+    const mobileUris = this.configService.get<string[]>('app.oidcMobileRedirectUris') ?? ['bookorbit://oauth2-callback'];
+    this.allowedRedirectUris = [`${this.appUrl}/oauth2-callback`, ...mobileUris];
+  }
+
+  private isRedirectUriAllowed(redirectUri: string): boolean {
+    // For http/https URIs normalize to origin+pathname; for custom schemes (e.g. bookorbit://) compare trimmed exact string.
+    const normalize = (raw: string) => {
+      try {
+        const u = new URL(raw);
+        return u.protocol.startsWith('http') ? u.origin + u.pathname : raw.replace(/\/+$/, '');
+      } catch {
+        return raw.replace(/\/+$/, '');
+      }
+    };
+    const normalized = normalize(redirectUri);
+    return this.allowedRedirectUris.some((allowed) => normalize(allowed) === normalized);
   }
 
   async generateState(providerSlug: string): Promise<{ state: string; authorizationEndpoint: string }> {
@@ -165,8 +173,7 @@ export class OidcService {
     const claimMapping = provider.claimMapping as OidcClaimMapping;
     const autoProvision = provider.autoProvision as OidcAutoProvision;
 
-    const allowedRedirectUri = `${this.appUrl}/oauth2-callback`;
-    if (normalizeRedirectUri(params.redirectUri) !== normalizeRedirectUri(allowedRedirectUri)) {
+    if (!this.isRedirectUriAllowed(params.redirectUri)) {
       throw new BadRequestException(`Redirect URI is not allowed: ${params.redirectUri}`);
     }
 

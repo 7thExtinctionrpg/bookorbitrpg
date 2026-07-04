@@ -1,0 +1,26 @@
+issuer: http://localhost:5556/dex
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+# Disable HTTPS requirement (dev only — http issuer)
+oauth2:
+  skipApprovalScreen: true
+
+staticClients:
+  - id: bookorbit-mobile
+    name: BookOrbit Mobile
+    public: true
+    redirectURIs:
+      - bookorbit://oauth2-callback
+      - http://localhost:5173/oauth2-callback
+
+staticPasswords:
+  - email: "dev@bookorbit.local"
+    # bcrypt hash of "password"
+    hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZdIem.zFLy"
+    username: "dev"
+    userID: "08a8684b-db88-4b73-90a9-3cd1661f5466"

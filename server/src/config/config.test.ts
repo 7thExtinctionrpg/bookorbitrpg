@@ -29,6 +29,7 @@ function resetEnv(): void {
   delete process.env.OIDC_JWKS_CACHE_TTL_SECS;
   delete process.env.OIDC_CLOCK_TOLERANCE_SECS;
   delete process.env.OIDC_TOKEN_EXCHANGE_TIMEOUT_MS;
+  delete process.env.OIDC_MOBILE_REDIRECT_URIS;
 }
 
 describe('config', () => {
@@ -48,6 +49,7 @@ describe('config', () => {
       githubReleasesRepo: 'bookorbit/bookorbit',
       githubReleasesToken: undefined,
       oidcAllowLocalIssuers: false,
+      oidcMobileRedirectUris: ['bookorbit://oauth2-callback'],
       swaggerEnabled: false,
       koboCloudscraperPython: undefined,
       koreaderPluginSourcePath: undefined,
@@ -72,10 +74,16 @@ describe('config', () => {
       githubReleasesRepo: 'acme/app',
       githubReleasesToken: 'ghp_example',
       oidcAllowLocalIssuers: true,
+      oidcMobileRedirectUris: ['bookorbit://oauth2-callback'],
       swaggerEnabled: true,
       koboCloudscraperPython: '/opt/bookorbit-python/bin/python',
       koreaderPluginSourcePath: '/opt/koreader/bookorbit.koplugin',
     });
+  });
+
+  it('parses OIDC_MOBILE_REDIRECT_URIS as comma-separated list', () => {
+    process.env.OIDC_MOBILE_REDIRECT_URIS = 'bookorbit://oauth2-callback, com.example.app://oauth2-callback';
+    expect(appConfig().oidcMobileRedirectUris).toEqual(['bookorbit://oauth2-callback', 'com.example.app://oauth2-callback']);
   });
 
   it('falls back to false when OIDC_ALLOW_LOCAL_ISSUERS is invalid', () => {
