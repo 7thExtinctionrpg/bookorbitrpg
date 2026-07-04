@@ -16,6 +16,7 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { ZipArchive } from 'archiver';
 import { createReadStream } from 'fs';
 import { stat } from 'fs/promises';
@@ -313,6 +314,7 @@ export class BookController {
     }
   }
 
+  @SkipThrottle()
   @Get(':id/cover')
   async getCover(
     @Param('id', ParseIntPipe) id: number,
@@ -340,6 +342,7 @@ export class BookController {
     reply.send(createReadStream(coverPath));
   }
 
+  @SkipThrottle()
   @Get(':id/thumbnail')
   async getThumbnail(
     @Param('id', ParseIntPipe) id: number,
@@ -369,6 +372,10 @@ export class BookController {
   // Flat file routes — no bookId needed since fileId is globally unique.
   // These MUST come before `:id/*` routes to avoid NestJS matching 'files' as :id.
 
+  // Media players (web audio, mobile RNTP) fire many HTTP range requests per file,
+  // which trips the global 120-req/min throttler. Streaming must skip it, matching
+  // the cover/thumbnail endpoints above.
+  @SkipThrottle()
   @Get('files/:fileId/serve')
   async serveFile(
     @Param('fileId', ParseIntPipe) fileId: number,
