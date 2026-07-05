@@ -7,6 +7,7 @@ import type { OidcAutoProvision, OidcClaimMapping } from '@bookorbit/types';
 
 import { AUDIT_EVENT, AuditEventsService } from '../../audit/audit-events.service';
 import { OidcProviderService } from '../../app-settings/oidc-provider.service';
+import { DEFAULT_OIDC_MOBILE_REDIRECT_URI } from '../../../config/config';
 import { OidcIdentityRepository } from '../../user/oidc-identity.repository';
 import { UserService } from '../../user/user.service';
 import { AuthService } from '../auth.service';
@@ -55,18 +56,19 @@ export class OidcService {
     private readonly configService: ConfigService,
   ) {
     this.appUrl = (this.configService.get<string>('app.appUrl') ?? 'http://localhost:5173').replace(/\/$/, '');
-    const mobileUris = this.configService.get<string[]>('app.oidcMobileRedirectUris') ?? ['bookorbit://oauth2-callback'];
+    const mobileUris = this.configService.get<string[]>('app.oidcMobileRedirectUris') ?? [DEFAULT_OIDC_MOBILE_REDIRECT_URI];
     this.allowedRedirectUris = [`${this.appUrl}/oauth2-callback`, ...mobileUris];
   }
 
   private isRedirectUriAllowed(redirectUri: string): boolean {
     // For http/https URIs normalize to origin+pathname; for custom schemes (e.g. bookorbit://) compare trimmed exact string.
     const normalize = (raw: string) => {
+      const trimmed = raw.trim();
       try {
-        const u = new URL(raw);
-        return u.protocol.startsWith('http') ? u.origin + u.pathname : raw.replace(/\/+$/, '');
+        const u = new URL(trimmed);
+        return u.protocol === 'http:' || u.protocol === 'https:' ? u.origin + u.pathname : trimmed.replace(/\/+$/, '');
       } catch {
-        return raw.replace(/\/+$/, '');
+        return trimmed.replace(/\/+$/, '');
       }
     };
     const normalized = normalize(redirectUri);

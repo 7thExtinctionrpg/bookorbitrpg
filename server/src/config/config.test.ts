@@ -86,6 +86,11 @@ describe('config', () => {
     expect(appConfig().oidcMobileRedirectUris).toEqual(['bookorbit://oauth2-callback', 'com.example.app://oauth2-callback']);
   });
 
+  it('falls back to the default mobile redirect URI when OIDC_MOBILE_REDIRECT_URIS has no usable entries', () => {
+    process.env.OIDC_MOBILE_REDIRECT_URIS = ' , ,';
+    expect(appConfig().oidcMobileRedirectUris).toEqual(['bookorbit://oauth2-callback']);
+  });
+
   it('falls back to false when OIDC_ALLOW_LOCAL_ISSUERS is invalid', () => {
     process.env.OIDC_ALLOW_LOCAL_ISSUERS = 'maybe';
     expect(appConfig().oidcAllowLocalIssuers).toBe(false);

@@ -205,6 +205,17 @@ describe('OidcService', () => {
       );
     });
 
+    it('accepts a redirect URI with leading/trailing whitespace', async () => {
+      const { service, identityRepo, userService, authService } = makeService();
+      const user = { id: 5, username: 'u1', active: true, permissions: [] };
+      identityRepo.findByProviderAndSubject.mockResolvedValue({ userId: 5 });
+      userService.findById.mockResolvedValue(user);
+      await expect(service.handleCallback({ ...BASE_CALLBACK, redirectUri: `  ${VALID_REDIRECT_URI}  ` }, {} as never)).resolves.toMatchObject({
+        mode: 'login',
+      });
+      expect(authService.issueTokensForUser).toHaveBeenCalled();
+    });
+
     it('rejects callback when extracted subject is missing', async () => {
       const { service, claimExtractor } = makeService();
       claimExtractor.extract.mockReturnValue({ subject: '', username: 'u1', name: 'User One', email: 'u1@example.com', groups: [] });
