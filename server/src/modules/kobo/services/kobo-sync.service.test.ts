@@ -66,6 +66,7 @@ function makeDb(state?: Partial<QueueState>) {
       koboSnapshotBooks: { findFirst: vi.fn() },
       koboSyncSettings: { findFirst: vi.fn() },
       collections: { findMany: vi.fn() },
+      smartScopes: { findMany: vi.fn().mockResolvedValue([]) },
     },
     select: vi.fn(() => makeChain(queue.select.shift() ?? [])),
     insert: vi.fn(() => makeChain(queue.insert.shift() ?? [])),
@@ -122,6 +123,9 @@ describe('KoboSyncService', () => {
     markLegacyNumericRemovalComplete: vi.fn(),
     buildVersionedCoverImageId: vi.fn(),
   };
+  const queryBuilder = {
+    buildWhere: vi.fn(),
+  };
 
   function makeIdentity(bookId: number, needsLegacyNumericRemoval = false) {
     return {
@@ -143,6 +147,7 @@ describe('KoboSyncService', () => {
       readingStateService as never,
       contentFilterRepository as never,
       bookIdentityService as never,
+      queryBuilder as never,
     );
   }
 
@@ -390,6 +395,54 @@ describe('KoboSyncService', () => {
         }),
       }),
     );
+  });
+
+  it('buildTagItems includes a tag per synced smart scope with matching, eligible books', async () => {
+    const db = makeDb({
+      select: [[{ id: 10 }, { id: 30 }]],
+    });
+    db.query.collections.findMany.mockResolvedValue([]);
+    const filter = { type: 'group', join: 'AND', rules: [] };
+    db.query.smartScopes.findMany.mockResolvedValue([{ id: 5, name: 'To Read', filter, syncToKobo: true }]);
+    bookAccessService.getAccessibleLibraryIds.mockResolvedValue([1, 2]);
+    queryBuilder.buildWhere.mockReturnValue('WHERE_CLAUSE');
+    const service = makeService(db);
+
+    const tags = await (service as any).buildTagItems(9, new Set([10, 22]));
+
+    expect(queryBuilder.buildWhere).toHaveBeenCalledWith(filter, { accessibleLibraryIds: [1, 2], userId: 9 });
+    expect(tags).toHaveLength(1);
+    expect(tags[0]).toEqual(
+      expect.objectContaining({
+        ChangedTag: expect.objectContaining({
+          Tag: expect.objectContaining({
+            Id: 'ss-5',
+            Name: 'To Read',
+            // book 30 matched the scope but isn't in the eligible set, and 22 is eligible but didn't match the scope
+            Items: [{ RevisionId: 'entitlement-10', Type: 'ProductRevisionTagItem' }],
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('buildTagItems excludes synced smart scopes without a filter instead of matching everything', async () => {
+    const db = makeDb();
+    db.query.collections.findMany.mockResolvedValue([]);
+    db.query.smartScopes.findMany.mockResolvedValue([{ id: 6, name: 'Empty Scope', filter: null, syncToKobo: true }]);
+    bookAccessService.getAccessibleLibraryIds.mockResolvedValue([1]);
+    const service = makeService(db);
+
+    const tags = await (service as any).buildTagItems(9, new Set([10]));
+
+    expect(queryBuilder.buildWhere).not.toHaveBeenCalled();
+    expect(tags).toEqual([
+      expect.objectContaining({
+        ChangedTag: expect.objectContaining({
+          Tag: expect.objectContaining({ Id: 'ss-6', Items: [] }),
+        }),
+      }),
+    ]);
   });
 
   describe('reconcileSnapshot', () => {
