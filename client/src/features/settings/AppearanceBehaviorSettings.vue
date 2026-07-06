@@ -1,9 +1,21 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { BookOpen, BookText } from '@lucide/vue'
+import { LOCALE_LABELS, SUPPORTED_LOCALES, type Locale } from '@bookorbit/types'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import { useDisplaySettings, type BookThumbnailClickAction } from '@/composables/useDisplaySettings'
 import { useSeriesCollapsePreference } from '@/features/book/composables/useSeriesCollapsePreference'
+import { useLocaleStore } from '@/stores/locale'
+
+const { t } = useI18n()
+const localeStore = useLocaleStore()
+
+const LANGUAGE_OPTIONS: { id: Locale; label: string }[] = SUPPORTED_LOCALES.map((id) => ({ id, label: LOCALE_LABELS[id] }))
+
+async function setLanguage(next: Locale) {
+  await localeStore.setLocale(next)
+}
 
 const { smartScopeFilterExpanded, thumbnailClickAction } = useDisplaySettings()
 const { prefs, setPreference } = useSeriesCollapsePreference()
@@ -11,8 +23,18 @@ const { prefs, setPreference } = useSeriesCollapsePreference()
 const globalCollapseEnabled = computed(() => prefs.value?.global ?? false)
 
 const THUMBNAIL_CLICK_OPTIONS: { id: BookThumbnailClickAction; label: string; hint: string; icon: typeof BookOpen }[] = [
-  { id: 'reader', label: 'Read first', hint: 'Open the reader when a readable file exists', icon: BookOpen },
-  { id: 'details', label: 'Open details', hint: 'Go to the book details page from grid and list thumbnails', icon: BookText },
+  {
+    id: 'reader',
+    label: t('settings.appearance.behavior.thumbnailClicks.readFirst'),
+    hint: t('settings.appearance.behavior.thumbnailClicks.readFirstHint'),
+    icon: BookOpen,
+  },
+  {
+    id: 'details',
+    label: t('settings.appearance.behavior.thumbnailClicks.openDetails'),
+    hint: t('settings.appearance.behavior.thumbnailClicks.openDetailsHint'),
+    icon: BookText,
+  },
 ]
 
 async function handleGlobalCollapseToggle(value: boolean) {
@@ -26,13 +48,33 @@ function setThumbnailClickAction(action: BookThumbnailClickAction) {
 
 <template>
   <div>
-    <p class="settings-group-label">Library Behavior</p>
+    <p class="settings-group-label">{{ t('settings.appearance.language.title') }}</p>
+    <div class="border border-border rounded-lg overflow-hidden divide-y divide-border shadow-xs mb-6">
+      <div class="flex flex-col gap-3 px-4 py-3.5 md:flex-row md:items-center md:justify-between md:px-5 md:py-4 bg-card">
+        <div class="min-w-0">
+          <p class="settings-label">{{ t('settings.appearance.language.label') }}</p>
+          <p class="settings-hint overflow-hidden text-ellipsis whitespace-nowrap md:whitespace-normal md:overflow-visible">
+            {{ t('settings.appearance.language.description') }}
+          </p>
+        </div>
+        <select
+          class="text-xs border border-border rounded-md px-2 py-2 md:py-1.5 bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-primary self-start w-full sm:w-auto sm:min-w-44"
+          data-testid="language-control"
+          :value="localeStore.locale"
+          @change="setLanguage(($event.target as HTMLSelectElement).value as Locale)"
+        >
+          <option v-for="opt in LANGUAGE_OPTIONS" :key="opt.id" :value="opt.id">{{ opt.label }}</option>
+        </select>
+      </div>
+    </div>
+
+    <p class="settings-group-label">{{ t('settings.appearance.behavior.title') }}</p>
     <div class="border border-border rounded-lg overflow-hidden divide-y divide-border shadow-xs">
       <div class="flex flex-col gap-3 px-4 py-3.5 md:flex-row md:items-center md:justify-between md:px-5 md:py-4 bg-card">
         <div class="min-w-0">
-          <p class="settings-label">Thumbnail clicks</p>
+          <p class="settings-label">{{ t('settings.appearance.behavior.thumbnailClicks.label') }}</p>
           <p class="settings-hint overflow-hidden text-ellipsis whitespace-nowrap md:whitespace-normal md:overflow-visible">
-            Choose what happens when opening a book from grid and list views
+            {{ t('settings.appearance.behavior.thumbnailClicks.hint') }}
           </p>
         </div>
         <div
@@ -56,18 +98,18 @@ function setThumbnailClickAction(action: BookThumbnailClickAction) {
       </div>
       <div class="flex items-center justify-between gap-3 px-4 py-3 md:px-5 md:py-3.5 bg-card">
         <div class="min-w-0">
-          <p class="settings-label">Show filter preview by default</p>
+          <p class="settings-label">{{ t('settings.appearance.behavior.filterPreview.label') }}</p>
           <p class="settings-hint overflow-hidden text-ellipsis whitespace-nowrap md:whitespace-normal md:overflow-visible">
-            Expand the active filter and sort summary when opening a smartScope
+            {{ t('settings.appearance.behavior.filterPreview.hint') }}
           </p>
         </div>
         <ToggleSwitch v-model="smartScopeFilterExpanded" />
       </div>
       <div class="flex items-center justify-between gap-3 px-4 py-3 md:px-5 md:py-3.5 bg-card">
         <div class="min-w-0">
-          <p class="settings-label">Collapse series by default</p>
+          <p class="settings-label">{{ t('settings.appearance.behavior.collapseSeries.label') }}</p>
           <p class="settings-hint overflow-hidden text-ellipsis whitespace-nowrap md:whitespace-normal md:overflow-visible">
-            Group books in the same series into a single card in library and collection views
+            {{ t('settings.appearance.behavior.collapseSeries.hint') }}
           </p>
         </div>
         <ToggleSwitch :model-value="globalCollapseEnabled" @update:model-value="handleGlobalCollapseToggle" />

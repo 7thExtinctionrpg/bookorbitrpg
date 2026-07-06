@@ -5,6 +5,7 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import VueI18nPlugin from '@intlify/unplugin-vue-i18n/vite'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -12,6 +13,14 @@ export default defineConfig({
     vue(),
     vueDevTools(),
     tailwindcss(),
+    VueI18nPlugin({
+      // Precompile the JSON message catalogs so no runtime message compiler (or eval) is needed.
+      include: [fileURLToPath(new URL('./src/locales/**', import.meta.url))],
+      // Some messages intentionally contain inline HTML (<strong>/<code>) rendered via v-html or
+      // <i18n-t>; allow it instead of failing compilation.
+      strictMessage: false,
+      escapeHtml: false,
+    }),
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
