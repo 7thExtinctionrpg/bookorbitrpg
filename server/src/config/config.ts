@@ -1,6 +1,8 @@
 import { registerAs } from '@nestjs/config';
 import { join, resolve } from 'path';
 
+export const DEFAULT_OIDC_MOBILE_REDIRECT_URI = 'bookorbit://oauth2-callback';
+
 export const appConfig = registerAs('app', () => ({
   nodeEnv: process.env.NODE_ENV ?? 'development',
   appUrl: process.env.APP_URL ?? 'http://localhost:5173',
@@ -8,6 +10,7 @@ export const appConfig = registerAs('app', () => ({
   githubReleasesRepo: process.env.GITHUB_RELEASES_REPO?.trim() || 'bookorbit/bookorbit',
   githubReleasesToken: process.env.GITHUB_RELEASES_TOKEN?.trim() || undefined,
   oidcAllowLocalIssuers: parseBooleanFlag(process.env.OIDC_ALLOW_LOCAL_ISSUERS, false),
+  oidcMobileRedirectUris: parseStringList(process.env.OIDC_MOBILE_REDIRECT_URIS, [DEFAULT_OIDC_MOBILE_REDIRECT_URI]),
   swaggerEnabled: parseBooleanFlag(process.env.SWAGGER_ENABLED, false),
   koboCloudscraperPython: process.env.KOBO_CLOUDSCRAPER_PYTHON?.trim() || undefined,
   koreaderPluginSourcePath: process.env.KOREADER_PLUGIN_PATH?.trim() || undefined,
@@ -55,6 +58,15 @@ export const oidcRuntimeConfig = registerAs('oidcRuntime', () => ({
   clockToleranceSecs: parsePositiveInteger(process.env.OIDC_CLOCK_TOLERANCE_SECS, 30),
   tokenExchangeTimeoutMs: parsePositiveInteger(process.env.OIDC_TOKEN_EXCHANGE_TIMEOUT_MS, 10_000),
 }));
+
+function parseStringList(value: string | undefined, fallback: string[]): string[] {
+  if (!value?.trim()) return fallback;
+  const parsed = value
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return parsed.length > 0 ? parsed : fallback;
+}
 
 function parsePositiveInteger(value: string | undefined, fallback: number): number {
   const parsed = Number(value);

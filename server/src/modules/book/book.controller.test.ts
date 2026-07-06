@@ -955,6 +955,21 @@ describe('BookController', () => {
     }
   });
 
+  it('exempts cover, thumbnail, and file-serve endpoints from the global rate limiter', () => {
+    const skipThrottleMethods = [BookController.prototype.getCover, BookController.prototype.getThumbnail, BookController.prototype.serveFile];
+
+    // @nestjs/throttler doesn't export the SkipThrottle metadata key publicly, so discover it at
+    // runtime instead of hardcoding the internal 'THROTTLER:SKIP<name>' format.
+    const throttlerSkipKey = Reflect.getMetadataKeys(skipThrottleMethods[0]).find((key) => key.startsWith('THROTTLER:SKIP'));
+    expect(throttlerSkipKey).toBeDefined();
+
+    for (const method of skipThrottleMethods) {
+      expect(Reflect.getMetadata(throttlerSkipKey, method)).toBe(true);
+    }
+
+    expect(Reflect.getMetadata(throttlerSkipKey, BookController.prototype.downloadFile)).toBeUndefined();
+  });
+
   it('preserves valid surrogate pairs while stripping lone surrogates in download filenames', async () => {
     const { controller, bookService } = makeController();
     const { reply, headers } = makeReply();
