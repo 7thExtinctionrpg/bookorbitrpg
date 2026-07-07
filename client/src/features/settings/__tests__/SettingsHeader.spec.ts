@@ -93,7 +93,7 @@ describe('SettingsHeader', () => {
 
     it('places integration tabs after OPDS', () => {
       const labels = getTabLabels(mountHeader({ su: true }))
-      expect(labels.slice(labels.indexOf('OPDS'), labels.indexOf('Admin'))).toEqual(['OPDS', 'Kobo', 'KOReader', 'Hardcover'])
+      expect(labels.slice(labels.indexOf('OPDS'), labels.indexOf('Admin'))).toEqual(['OPDS', 'Kobo', 'KOReader', 'Hardcover', 'StoryGraph'])
     })
   })
 
@@ -243,6 +243,12 @@ describe('SettingsHeader', () => {
     it('Hardcover tab is active when route is settings-hardcover', () => {
       const wrapper = mountHeader({ routeName: 'settings-hardcover', perms: ['hardcover_sync'] })
       const btn = wrapper.findAll('button').find((b) => b.text() === 'Hardcover')
+      expect(btn?.classes()).toContain('border-primary')
+    })
+
+    it('StoryGraph tab is active when route is settings-storygraph', () => {
+      const wrapper = mountHeader({ routeName: 'settings-storygraph', perms: ['storygraph_sync'] })
+      const btn = wrapper.findAll('button').find((b) => b.text() === 'StoryGraph')
       expect(btn?.classes()).toContain('border-primary')
     })
 

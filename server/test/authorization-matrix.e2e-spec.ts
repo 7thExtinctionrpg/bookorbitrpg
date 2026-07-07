@@ -426,6 +426,11 @@ describe('Authorization matrix (e2e)', () => {
           path: '/hardcover/settings',
           token: 'allPerms',
         },
+        [Permission.StorygraphSync]: {
+          method: 'GET',
+          path: '/storygraph/settings',
+          token: 'allPerms',
+        },
         [Permission.DemoRestricted]: {
           method: 'GET',
           path: '/notifications',
