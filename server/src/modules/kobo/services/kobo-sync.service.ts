@@ -1,12 +1,13 @@
 import { createHash } from 'crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { SQL, and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { SQL, and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { DB } from '../../../db/db.module';
 import * as schema from '../../../db/schema';
 import { buildContentFilterClauses } from '../../../common/utils/content-filter-sql.utils';
 import { ContentFilterRepository } from '../../user/content-filter.repository';
+import { BookQueryBuilder } from '../../book/book-query-builder.service';
 import { KoboBookAccessService } from './kobo-book-access.service';
 import { KoboBookIdentityService } from './kobo-book-identity.service';
 import { KoboReadingStateService } from './kobo-reading-state.service';
@@ -75,6 +76,7 @@ export class KoboSyncService {
     private readonly readingStateService: KoboReadingStateService,
     private readonly contentFilterRepository: ContentFilterRepository,
     private readonly bookIdentityService: KoboBookIdentityService,
+    private readonly queryBuilder: BookQueryBuilder,
   ) {}
 
   async getDelta(userId: number, deviceToken: string, baseUrl: string): Promise<{ entitlements: unknown[]; hasMore: boolean; syncToken: string }> {
@@ -415,14 +417,16 @@ export class KoboSyncService {
     const collections = await this.db.query.collections.findMany({
       where: and(eq(schema.collections.userId, userId), eq(schema.collections.syncToKobo, true)),
     });
-    if (collections.length === 0) return [];
 
     const collectionIds = collections.map((c) => c.id);
 
-    const collectionBooks = await this.db
-      .select({ collectionId: schema.collectionBooks.collectionId, bookId: schema.collectionBooks.bookId })
-      .from(schema.collectionBooks)
-      .where(inArray(schema.collectionBooks.collectionId, collectionIds));
+    const collectionBooks =
+      collectionIds.length === 0
+        ? []
+        : await this.db
+            .select({ collectionId: schema.collectionBooks.collectionId, bookId: schema.collectionBooks.bookId })
+            .from(schema.collectionBooks)
+            .where(inArray(schema.collectionBooks.collectionId, collectionIds));
 
     const booksByCollection = new Map<number, number[]>();
     for (const row of collectionBooks) {
@@ -431,27 +435,63 @@ export class KoboSyncService {
       booksByCollection.set(row.collectionId, list);
     }
 
+    const accessibleLibraryIds = await this.bookAccessService.getAccessibleLibraryIds(userId);
+    const smartScopeMatches = await this.getSyncedSmartScopeMatches(userId, accessibleLibraryIds);
+
+    if (collections.length === 0 && smartScopeMatches.size === 0) return [];
+
     const now = new Date().toISOString();
     const allEligibleBookIds = [...eligibleIds];
     const identitiesById = await this.bookIdentityService.ensureForBooks(userId, allEligibleBookIds, false);
-    return collections.map((col) => {
-      const bookIds = (booksByCollection.get(col.id) ?? []).filter((id) => eligibleIds.has(id));
-      return {
-        ChangedTag: {
-          Tag: {
-            Id: `col-${col.id}`,
-            Name: col.name,
-            Created: now,
-            LastModified: now,
-            Type: 'UserTag',
-            Items: bookIds.flatMap((bookId) => {
+
+    const buildTag = (id: string, name: string, bookIds: number[]) => ({
+      ChangedTag: {
+        Tag: {
+          Id: id,
+          Name: name,
+          Created: now,
+          LastModified: now,
+          Type: 'UserTag',
+          Items: bookIds
+            .filter((bookId) => eligibleIds.has(bookId))
+            .flatMap((bookId) => {
               const identity = identitiesById.get(bookId);
               return identity ? [{ RevisionId: identity.entitlementId, Type: 'ProductRevisionTagItem' }] : [];
             }),
-          },
         },
-      };
+      },
     });
+
+    const collectionTags = collections.map((col) => buildTag(`col-${col.id}`, col.name, booksByCollection.get(col.id) ?? []));
+    const smartScopeTags = [...smartScopeMatches.entries()].map(([scope, bookIds]) => buildTag(`ss-${scope.id}`, scope.name, bookIds));
+
+    return [...collectionTags, ...smartScopeTags];
+  }
+
+  private async getSyncedSmartScopeMatches(userId: number, accessibleLibraryIds: number[] | null): Promise<Map<schema.SmartScope, number[]>> {
+    const scopes = await this.db.query.smartScopes.findMany({
+      where: and(eq(schema.smartScopes.userId, userId), eq(schema.smartScopes.syncToKobo, true)),
+    });
+
+    const result = new Map<schema.SmartScope, number[]>();
+    if (scopes.length === 0) return result;
+
+    const libraryIds = accessibleLibraryIds ?? (await this.db.select({ id: schema.libraries.id }).from(schema.libraries)).map((row) => row.id);
+
+    for (const scope of scopes) {
+      if (!scope.filter) {
+        result.set(scope, []);
+        continue;
+      }
+      const where = this.queryBuilder.buildWhere(scope.filter, { accessibleLibraryIds: libraryIds, userId });
+      const rows = await this.db.select({ id: schema.books.id }).from(schema.books).where(where);
+      result.set(
+        scope,
+        rows.map((row) => row.id),
+      );
+    }
+
+    return result;
   }
 
   private buildRemovedEntitlement(bookId: number | string) {
@@ -650,13 +690,18 @@ export class KoboSyncService {
         AND ${schema.collections.syncToKobo} = true
     )`;
 
+    const smartScopeMatches = await this.getSyncedSmartScopeMatches(userId, accessibleLibraryIds);
+    const smartScopeBookIds = [...new Set([...smartScopeMatches.values()].flat())];
+    const membershipFilter =
+      smartScopeBookIds.length > 0 ? or(collectionMembershipFilter, inArray(schema.books.id, smartScopeBookIds)) : collectionMembershipFilter;
+
     const contentFilterClauses = accessibleLibraryIds !== null ? buildContentFilterClauses(contentFilters, this.db) : [];
 
     return and(
       eq(schema.books.status, 'present'),
       inArray(schema.bookFiles.format, ['epub', 'kepub']),
       libraryAccessFilter,
-      collectionMembershipFilter,
+      membershipFilter,
       ...contentFilterClauses,
     );
   }

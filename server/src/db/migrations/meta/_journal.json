@@ -260,6 +260,13 @@
       "when": 1783034396046,
       "tag": "0036_kobo-sync-history",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1783378978935,
+      "tag": "0037_add_sync_to_kobo_smart_scopes",
+      "breakpoints": true
     }
   ]
 }
