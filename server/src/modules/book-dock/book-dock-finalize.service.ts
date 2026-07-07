@@ -11,7 +11,7 @@ import type {
   BookDockFinalizeResult,
   BookDockMetadata,
 } from '@bookorbit/types';
-import { NotificationType, resolveUploadPath } from '@bookorbit/types';
+import { isFileBasedOrganizationMode, NotificationType, resolveUploadPath } from '@bookorbit/types';
 import { NotificationService } from '../notification/notification.service';
 import { SeriesIdentityService } from '../../common/services/series-identity.service';
 import { SeriesMembershipService } from '../../common/services/series-membership.service';
@@ -258,7 +258,7 @@ export class BookDockFinalizeService implements OnModuleInit, OnModuleDestroy {
       let bookId: number;
       try {
         const { size } = await stat(destPath);
-        const bookFolderPath = library.organizationMode === 'book_per_file' ? destPath : dirname(destPath);
+        const bookFolderPath = isFileBasedOrganizationMode(library.organizationMode) ? destPath : dirname(destPath);
         ({ bookId } = await this.processor.createBookRecord(
           libraryId,
           folder.id,

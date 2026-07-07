@@ -16,7 +16,6 @@ import { useBookNavigation } from '@/features/book/composables/useBookNavigation
 import { useLibraries } from '@/features/library/composables/useLibraries'
 import { usePageTitle } from '@/composables/usePageTitle'
 import { useSafeHtml } from '@/features/book/composables/useSafeHtml'
-import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import { api } from '@/lib/api'
 import EntityNotFound from '@/components/EntityNotFound.vue'
 import AddToCollectionSheet from '@/features/collection/components/AddToCollectionSheet.vue'
@@ -27,6 +26,7 @@ import SeriesCompletionBar from '../components/SeriesCompletionBar.vue'
 import SeriesGapBanner from '../components/SeriesGapBanner.vue'
 import { fetchSeriesBooks } from '../api/series'
 import { groupSeriesBooksByMedia } from '../composables/useSeriesBookMediaGroups'
+import { groupSeriesBooksByAttribute } from '../composables/useSeriesBookAttributeGroups'
 import { useSeriesDetail } from '../composables/useSeriesDetail'
 import { useCoverStack, MAX_VISIBLE as MAX_STACK_VISIBLE } from '../composables/useCoverStack'
 import {
@@ -121,7 +121,10 @@ const hiddenLeadGenres = computed(() => {
   return Math.max(0, totalGenres - displayedLeadGenres.value.length)
 })
 const SERIES_AUDIOBOOK_COVER_SCALE = 1.25
-const GROUP_BY_MEDIA_STORAGE_KEY = 'bookorbit:series-detail:group-by-media'
+type SeriesGroupByMode = 'none' | 'media' | 'genre' | 'tag'
+const SERIES_GROUP_BY_MODES: readonly SeriesGroupByMode[] = ['none', 'media', 'genre', 'tag']
+const GROUP_BY_STORAGE_KEY = 'bookorbit:series-detail:group-by'
+const LEGACY_GROUP_BY_MEDIA_STORAGE_KEY = 'bookorbit:series-detail:group-by-media'
 const seriesBooksCoverSize = computed(() => Math.max(125, portraitCoverSize.value - 20))
 const leadMetaItems = computed(() => {
   if (!leadBook.value) return []
@@ -134,28 +137,35 @@ const leadMetaItems = computed(() => {
 
 type BookActionType = 'quick-view' | 'add-to-collection' | 'delete'
 
-function loadGroupByMediaPreference(): boolean {
+function loadGroupByPreference(): SeriesGroupByMode {
   try {
-    const stored = localStorage.getItem(GROUP_BY_MEDIA_STORAGE_KEY)
-    if (stored === 'true') return true
-    if (stored === 'false') return false
+    const stored = localStorage.getItem(GROUP_BY_STORAGE_KEY)
+    if (stored && (SERIES_GROUP_BY_MODES as readonly string[]).includes(stored)) return stored as SeriesGroupByMode
+    // Migrate the legacy boolean "group by media" toggle.
+    if (localStorage.getItem(LEGACY_GROUP_BY_MEDIA_STORAGE_KEY) === 'true') return 'media'
   } catch {
-    return false
+    return 'none'
   }
 
-  return false
+  return 'none'
 }
 
-function saveGroupByMediaPreference(value: boolean) {
+function saveGroupByPreference(value: SeriesGroupByMode) {
   try {
-    localStorage.setItem(GROUP_BY_MEDIA_STORAGE_KEY, String(value))
+    localStorage.setItem(GROUP_BY_STORAGE_KEY, value)
   } catch {
     return
   }
 }
 
-const groupByMedia = ref(loadGroupByMediaPreference())
+const groupBy = ref<SeriesGroupByMode>(loadGroupByPreference())
 const nonEmptyMediaGroups = computed(() => groupSeriesBooksByMedia(books.value).filter((group) => group.books.length > 0))
+const activeGroups = computed<{ key: string; label: string; books: BookCard[] }[] | null>(() => {
+  if (groupBy.value === 'media') return nonEmptyMediaGroups.value
+  if (groupBy.value === 'genre') return groupSeriesBooksByAttribute(books.value, 'genres')
+  if (groupBy.value === 'tag') return groupSeriesBooksByAttribute(books.value, 'tags')
+  return null
+})
 const quickViewBookId = ref<number | null>(null)
 const quickViewOpen = ref(false)
 
@@ -200,9 +210,10 @@ function handleBookUpdate(updated: BookCard) {
   if (idx !== -1) books.value = books.value.map((b, i) => (i === idx ? updated : b))
 }
 
-function handleGroupByMediaUpdate(value: boolean) {
-  groupByMedia.value = value
-  saveGroupByMediaPreference(value)
+function handleGroupByChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value as SeriesGroupByMode
+  groupBy.value = value
+  saveGroupByPreference(value)
 }
 
 function goBack() {
@@ -615,8 +626,8 @@ defineOptions({ name: 'SeriesDetailView' })
           <div
             class="sticky top-0 z-20 -mx-3 mb-3 border-b border-border/60 bg-card/92 px-3 pb-3 pt-1 backdrop-blur supports-backdrop-filter:bg-card/78"
           >
-            <div class="flex flex-col gap-2 md:flex-row md:items-center" :class="groupByMedia ? 'md:justify-end' : 'md:justify-between'">
-              <h2 v-if="!groupByMedia" data-testid="series-books-section-heading" class="text-sm font-semibold text-foreground">Books</h2>
+            <div class="flex flex-col gap-2 md:flex-row md:items-center" :class="groupBy !== 'none' ? 'md:justify-end' : 'md:justify-between'">
+              <h2 v-if="groupBy === 'none'" data-testid="series-books-section-heading" class="text-sm font-semibold text-foreground">Books</h2>
               <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                 <select
                   v-model="sort"
@@ -644,15 +655,18 @@ defineOptions({ name: 'SeriesDetailView' })
                   <option v-for="library in libraries" :key="library.id" :value="library.id">{{ library.name }}</option>
                 </select>
 
-                <div class="flex h-8 w-full items-center justify-between gap-2 rounded-md border border-input px-2.5 text-sm sm:w-auto">
-                  <span class="whitespace-nowrap text-muted-foreground">Group by media</span>
-                  <ToggleSwitch
-                    :model-value="groupByMedia"
-                    aria-label="Group by media"
-                    data-testid="series-group-by-media-toggle"
-                    @update:model-value="handleGroupByMediaUpdate"
-                  />
-                </div>
+                <select
+                  :value="groupBy"
+                  aria-label="Group by"
+                  data-testid="series-group-by-select"
+                  class="h-8 w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-sm outline-none transition-colors focus:border-primary/60 sm:w-auto"
+                  @change="handleGroupByChange"
+                >
+                  <option value="none">No grouping</option>
+                  <option value="media">Group by media</option>
+                  <option value="genre">Group by genre</option>
+                  <option value="tag">Group by tag</option>
+                </select>
               </div>
             </div>
           </div>
@@ -663,8 +677,8 @@ defineOptions({ name: 'SeriesDetailView' })
           </div>
 
           <template v-if="books.length > 0">
-            <div v-if="groupByMedia" class="space-y-7">
-              <section v-for="group in nonEmptyMediaGroups" :key="group.key" class="space-y-3" :data-testid="`series-media-group-${group.key}`">
+            <div v-if="activeGroups" class="space-y-7">
+              <section v-for="group in activeGroups" :key="group.key" class="space-y-3" :data-testid="`series-book-group-${group.key}`">
                 <div class="flex items-center justify-between border-b border-border/60 pb-2">
                   <h3 class="text-sm font-semibold text-foreground">{{ group.label }}</h3>
                   <span class="text-xs text-muted-foreground">{{ group.books.length.toLocaleString() }}</span>

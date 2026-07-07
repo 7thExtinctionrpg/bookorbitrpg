@@ -85,7 +85,7 @@ export const libraries = pgTable(
   (t) => [
     uniqueIndex('libraries_name_lower_uidx').on(sql`lower(${t.name})`),
     check('libraries_display_order_nonnegative_chk', sql`${t.displayOrder} >= 0`),
-    check('libraries_organization_mode_chk', sql`${t.organizationMode} in ('book_per_folder', 'book_per_file')`),
+    check('libraries_organization_mode_chk', sql`${t.organizationMode} in ('book_per_folder', 'book_per_file', 'book_per_file_rpg')`),
     check('libraries_reading_threshold_range_chk', sql`${t.readingThreshold} >= 0 and ${t.readingThreshold} <= 100`),
     check('libraries_mark_finished_percent_range_chk', sql`${t.markAsFinishedPercentComplete} >= 0 and ${t.markAsFinishedPercentComplete} <= 100`),
     check('libraries_scan_mode_chk', sql`${t.scanMode} in ('auto', 'manual')`),

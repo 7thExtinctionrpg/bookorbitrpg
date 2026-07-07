@@ -1,5 +1,15 @@
-export type OrganizationMode = "book_per_file" | "book_per_folder";
+export type OrganizationMode = "book_per_file" | "book_per_folder" | "book_per_file_rpg";
 export type CoverAspectRatio = "2/3" | "1/1";
+
+/**
+ * Organization modes where each individual file becomes its own book (the book's
+ * folderPath is the file's own path). Both plain file-per-book and the RPG variant
+ * behave this way; only the RPG variant additionally derives series/genres from the
+ * directory structure at scan time.
+ */
+export function isFileBasedOrganizationMode(mode: OrganizationMode | string | null | undefined): boolean {
+  return mode === "book_per_file" || mode === "book_per_file_rpg";
+}
 
 export const DEFAULT_FORMAT_PRIORITY = [
   "epub",

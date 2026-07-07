@@ -234,6 +234,40 @@ export class MetadataService {
     await this.persistCover(bookId, bytes, true);
   }
 
+  /**
+   * Apply series/genres derived from a book's folder structure (RPG libraries).
+   * Runs after file extraction so path-derived values win over any embedded ones,
+   * while still respecting per-field metadata locks. Genres are only replaced when
+   * at least one is supplied, so books without genre sub-folders keep any embedded
+   * genres. Setting the series clears any embedded series index (paths carry none).
+   */
+  async applyPathDerivedMetadata(bookId: number, data: { seriesName: string | null; genres: string[] }): Promise<void> {
+    const update: { seriesName?: string | null; seriesIndex?: number | null; genres?: string[] } = {};
+    if (data.seriesName !== null) {
+      update.seriesName = normalizeMetadataText(data.seriesName);
+      update.seriesIndex = null;
+    }
+    if (data.genres.length > 0) {
+      update.genres = data.genres;
+    }
+
+    const { dto: filtered } = await this.bookMetadataLockService.filterAutomatedBookUpdate(bookId, update);
+
+    const scalarFields: Partial<typeof schema.bookMetadata.$inferInsert> = {};
+    if (filtered.seriesName !== undefined) scalarFields.seriesName = normalizeMetadataText(filtered.seriesName);
+    if (filtered.seriesIndex !== undefined) scalarFields.seriesIndex = filtered.seriesIndex;
+    if (Object.keys(scalarFields).length > 0) {
+      scalarFields.updatedAt = new Date();
+      const patch = (await this.seriesIdentity?.resolveMetadataPatch(scalarFields)) ?? scalarFields;
+      await this.db.update(bookMetadata).set(patch).where(eq(bookMetadata.bookId, bookId));
+      await this.seriesMemberships?.syncPrimaryFromMetadata(bookId);
+    }
+
+    if (filtered.genres !== undefined && filtered.genres.length > 0) {
+      await this.replaceGenres(bookId, filtered.genres);
+    }
+  }
+
   async refreshCoverForBook(bookId: number, absolutePath: string, format: string): Promise<boolean> {
     const event = 'metadata.cover_refresh';
     const startedAt = Date.now();

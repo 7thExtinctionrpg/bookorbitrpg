@@ -10,7 +10,7 @@ import type {
   ScanBooksAddedEvent,
   ScanProgressEvent,
 } from '@bookorbit/types';
-import { NotificationType } from '@bookorbit/types';
+import { isFileBasedOrganizationMode, NotificationType } from '@bookorbit/types';
 import { AchievementEventsService, ACHIEVEMENT_EVENT_LIBRARY_CATALOG_CHANGED } from '../achievement/achievement-events.service';
 import { BookMetadataFetchOrchestratorService } from '../book-metadata-fetch/book-metadata-fetch-orchestrator.service';
 import { MetadataService } from '../metadata/metadata.service';
@@ -107,7 +107,7 @@ const BOOK_MISSING_NOTIFY_DEBOUNCE_MS = 5000;
 const WATCHER_NOTIFY_DEBOUNCE_MS = 30_000;
 const TARGETED_BOOK_SCAN_MAX_CONCURRENCY = 8;
 const MISSING_FILE_STAT_BATCH_SIZE = 50;
-type OrganizationMode = 'book_per_file' | 'book_per_folder';
+type OrganizationMode = 'book_per_file' | 'book_per_folder' | 'book_per_file_rpg';
 
 interface ScanCounts {
   addedCount: number;
@@ -141,7 +141,22 @@ interface ProcessedFileResult {
 }
 
 function normalizeOrganizationMode(mode: string | null | undefined): OrganizationMode {
-  return mode === 'book_per_file' ? 'book_per_file' : 'book_per_folder';
+  if (mode === 'book_per_file') return 'book_per_file';
+  if (mode === 'book_per_file_rpg') return 'book_per_file_rpg';
+  return 'book_per_folder';
+}
+
+/**
+ * Derive series (first directory below the library root) and genres (every
+ * intermediate directory between the series folder and the file) from a file's
+ * path, for `book_per_file_rpg` libraries. A file sitting directly in the library
+ * root (no series folder) yields no series and no genres.
+ */
+function deriveRpgPathMetadata(relPath: string): { seriesName: string | null; genres: string[] } {
+  const parts = relPath.split(sep).filter((segment) => segment.length > 0);
+  // parts = [series?, ...genres, filename]; need at least one directory + the file.
+  if (parts.length < 2) return { seriesName: null, genres: [] };
+  return { seriesName: parts[0], genres: parts.slice(1, parts.length - 1) };
 }
 
 function normalizeMetadataPrecedence(metadataPrecedence: string[] | null | undefined): ScannerMetadataSource[] {
@@ -755,7 +770,7 @@ export class ScannerService implements OnApplicationBootstrap {
       organizationMode: normalizeOrganizationMode(rawSettings?.organizationMode),
     };
 
-    if (settings.organizationMode === 'book_per_file') {
+    if (isFileBasedOrganizationMode(settings.organizationMode)) {
       return this.handleScanBookPerFile(filePath, libraryId, libraryFolder, settings, event, startedAt);
     }
 
@@ -805,7 +820,7 @@ export class ScannerService implements OnApplicationBootstrap {
     let candidates: BookCandidate[];
     let skippedDirs: Set<string>;
     try {
-      if (settings.organizationMode === 'book_per_file') {
+      if (isFileBasedOrganizationMode(settings.organizationMode)) {
         const walkResult = await findLooseFileCandidates(dirPath, settings.excludePatterns, walkLogger);
         candidates = walkResult.candidates;
         skippedDirs = walkResult.skippedDirs;
@@ -869,6 +884,7 @@ export class ScannerService implements OnApplicationBootstrap {
         settings.metadataPrecedence,
         false,
         candidateFolderPaths,
+        settings.organizationMode,
       );
       this.emitTargetedScanResult(libraryId, result);
       seenBookIds.add(result.bookId);
@@ -972,6 +988,7 @@ export class ScannerService implements OnApplicationBootstrap {
       settings.metadataPrecedence,
       false,
       new Set([candidate.folderPath]),
+      settings.organizationMode,
     );
     await this.pruneMissingBookFiles(result.bookId, result.retainedFileIds, maps.fileIdsByBookId, maps.fileByPath, maps.fileByIno, {
       added: 0,
@@ -1040,6 +1057,7 @@ export class ScannerService implements OnApplicationBootstrap {
       settings.metadataPrecedence,
       false,
       new Set([candidate.folderPath]),
+      settings.organizationMode,
     );
     await this.pruneMissingBookFiles(result.bookId, result.retainedFileIds, maps.fileIdsByBookId, maps.fileByPath, maps.fileByIno, {
       added: 0,
@@ -1128,6 +1146,7 @@ export class ScannerService implements OnApplicationBootstrap {
       settings.metadataPrecedence,
       false,
       new Set([candidate.folderPath]),
+      settings.organizationMode,
     );
     await this.pruneMissingBookFiles(result.bookId, result.retainedFileIds, maps.fileIdsByBookId, maps.fileByPath, maps.fileByIno, {
       added: 0,
@@ -1189,10 +1208,9 @@ export class ScannerService implements OnApplicationBootstrap {
             this.logger.warn(
               `[scanner.walk_candidates] [fail] libraryId=${libraryId} path="${sanitizeLogValue(folder.path)}" error="${sanitizeLogValue(msg)}" - candidate walk warning`,
             );
-          const walkResult: WalkResult =
-            organizationMode === 'book_per_file'
-              ? await findLooseFileCandidates(folder.path, excludePatterns, walkLogger, knownDirMtimes)
-              : await findBookCandidates(folder.path, excludePatterns, walkLogger, knownDirMtimes);
+          const walkResult: WalkResult = isFileBasedOrganizationMode(organizationMode)
+            ? await findLooseFileCandidates(folder.path, excludePatterns, walkLogger, knownDirMtimes)
+            : await findBookCandidates(folder.path, excludePatterns, walkLogger, knownDirMtimes);
           candidates = walkResult.candidates;
           skippedDirs = walkResult.skippedDirs;
           unchangedDirs = walkResult.unchangedDirs;
@@ -1226,6 +1244,7 @@ export class ScannerService implements OnApplicationBootstrap {
           jobId,
           formatPriority,
           metadataPrecedence,
+          organizationMode,
           skippedDirs,
           unchangedDirs,
         );
@@ -1305,6 +1324,7 @@ export class ScannerService implements OnApplicationBootstrap {
     jobId: number,
     formatPriority: string[],
     metadataPrecedence: string[],
+    organizationMode: OrganizationMode,
     skippedDirs: Set<string> = new Set(),
     unchangedDirs: Set<string> = new Set(),
   ): Promise<ScanCounts> {
@@ -1337,6 +1357,7 @@ export class ScannerService implements OnApplicationBootstrap {
           metadataPrecedence,
           isFirstScan,
           candidateFolderPaths,
+          organizationMode,
         );
         seenBookIds.add(result.bookId);
         for (const fid of result.retainedFileIds) allRetainedFileIds.add(fid);
@@ -1413,6 +1434,7 @@ export class ScannerService implements OnApplicationBootstrap {
     metadataPrecedence: string[],
     isFirstScan: boolean,
     candidateFolderPaths: Set<string>,
+    organizationMode: OrganizationMode,
   ): Promise<{ bookId: number; added: number; updated: number; retainedFileIds: Set<number>; becameVisible: boolean }> {
     const { bookByFolderPath, booksByParentDir, fileByPath, fileByIno } = maps;
     const counts = { added: 0, updated: 0 };
@@ -1429,7 +1451,11 @@ export class ScannerService implements OnApplicationBootstrap {
       fileByIno,
       fileCounts,
       candidateFolderPaths,
+      organizationMode,
     );
+    // A brand-new book was created for this candidate (restores/transfers bump
+    // updatedCount instead). Used to gate RPG path-derived metadata below.
+    const isNewBook = fileCounts.addedCount > 0;
     // If the book was transferred from another library, its files exist globally
     // but not in our local maps - we need global lookups even on a "first scan"
     const skipGlobalLookups = isFirstScan && fileCounts.addedCount > 0;
@@ -1517,6 +1543,25 @@ export class ScannerService implements OnApplicationBootstrap {
     // 3a: Extract shared metadata from the first available configured source.
     if (shouldExtractMetadata) {
       await this.extractFirstAvailableMetadataSource(book.id, metadataSources);
+    }
+
+    // 3a-rpg: For RPG libraries, derive series (first directory) and genres
+    //         (intermediate directories) from the file's path and let them win
+    //         over any embedded values. Only applied to newly created books so
+    //         later manual edits and rescans are preserved. No API fetch runs
+    //         (upsertBook skips the auto-fetch schedule for this mode).
+    if (organizationMode === 'book_per_file_rpg' && isNewBook) {
+      const relPath = candidate.files[0]?.relPath ?? '';
+      const { seriesName, genres } = deriveRpgPathMetadata(relPath);
+      if (seriesName !== null || genres.length > 0) {
+        try {
+          await this.metadataService.applyPathDerivedMetadata(book.id, { seriesName, genres });
+        } catch (err) {
+          this.logger.warn(
+            `[scanner.apply_rpg_metadata] [fail] bookId=${book.id} path="${sanitizeLogValue(candidate.folderPath)}" errorClass=${err instanceof Error ? err.name : 'Error'} error="${sanitizeLogValue(err instanceof Error ? err.message : String(err))}" - RPG path metadata failed`,
+          );
+        }
+      }
     }
 
     // 3b: When winner is not audio, extract audio-specific fields (chapters, narrators)
@@ -1643,6 +1688,7 @@ export class ScannerService implements OnApplicationBootstrap {
     fileByIno: Map<number, FileByInoEntry>,
     counts: ScanCounts,
     candidateFolderPaths: Set<string>,
+    organizationMode: OrganizationMode,
   ) {
     const existing = bookByFolderPath.get(candidate.folderPath);
     const candidateOwnedBookIds = new Set<number>();
@@ -1698,13 +1744,17 @@ export class ScannerService implements OnApplicationBootstrap {
         status: 'processing',
       });
       counts.addedCount++;
-      this.autoFetchOrchestrator
-        ?.scheduleIfEligible(book.id, libraryId, 'event_import')
-        .catch((err: Error) =>
-          this.logger.warn(
-            `[scanner.upsert_book] [fail] libraryId=${libraryId} bookId=${book.id} action=schedule_metadata_fetch errorClass=${err.name} error="${sanitizeLogValue(err.message)}" - metadata fetch schedule failed`,
-          ),
-        );
+      // RPG libraries populate metadata from the folder structure at scan time and
+      // must not trigger an external metadata API lookup on initial import.
+      if (organizationMode !== 'book_per_file_rpg') {
+        this.autoFetchOrchestrator
+          ?.scheduleIfEligible(book.id, libraryId, 'event_import')
+          .catch((err: Error) =>
+            this.logger.warn(
+              `[scanner.upsert_book] [fail] libraryId=${libraryId} bookId=${book.id} action=schedule_metadata_fetch errorClass=${err.name} error="${sanitizeLogValue(err.message)}" - metadata fetch schedule failed`,
+            ),
+          );
+      }
       const entry = { id: book.id, status: book.status, folderPath: book.folderPath, primaryFileId: book.primaryFileId ?? null };
       bookByFolderPath.set(candidate.folderPath, entry);
       return entry;

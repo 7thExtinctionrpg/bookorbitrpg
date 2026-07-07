@@ -36,6 +36,10 @@ function handleSelectFileMode() {
   handleSelectMode('book_per_file')
 }
 
+function handleSelectRpgMode() {
+  handleSelectMode('book_per_file_rpg')
+}
+
 // ── Allowed formats ──────────────────────────────────────────────────────────
 
 const ALL_FORMATS = Object.keys(FORMAT_LABELS)
@@ -100,7 +104,7 @@ function onPatternKeydown(e: KeyboardEvent) {
           </TooltipContent>
         </Tooltip>
       </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <button
           type="button"
           class="text-left rounded-lg border p-4 transition-colors"
@@ -152,6 +156,33 @@ function onPatternKeydown(e: KeyboardEvent) {
           <p class="text-xs text-muted-foreground leading-relaxed">
             Treats every file as an individual book. Best suited for libraries with one format per title. Avoid if your audiobooks span multiple
             files.
+          </p>
+        </button>
+
+        <button
+          type="button"
+          class="text-left rounded-lg border p-4 transition-colors"
+          :class="[
+            organizationMode === 'book_per_file_rpg'
+              ? 'border-primary bg-primary/5 ring-1 ring-primary'
+              : 'border-border bg-card hover:border-primary/40',
+            organizationModeLocked ? 'cursor-not-allowed opacity-75' : '',
+          ]"
+          :disabled="organizationModeLocked"
+          @click="handleSelectRpgMode"
+        >
+          <div class="flex items-center gap-2 mb-1.5">
+            <span
+              class="w-3.5 h-3.5 rounded-full border-2 shrink-0 flex items-center justify-center"
+              :class="organizationMode === 'book_per_file_rpg' ? 'border-primary' : 'border-muted-foreground/40'"
+            >
+              <span v-if="organizationMode === 'book_per_file_rpg'" class="w-1.5 h-1.5 rounded-full bg-primary" />
+            </span>
+            <span class="text-sm font-semibold text-foreground">File as RPG</span>
+          </div>
+          <p class="text-xs text-muted-foreground leading-relaxed">
+            Every file is a book, with metadata taken from the folder tree: the top-level folder is the series and each sub-folder is a genre. The
+            initial scan reads the embedded cover only — no online lookup.
           </p>
         </button>
       </div>

@@ -3,6 +3,7 @@ import { readdir, stat } from 'fs/promises';
 import type { BigIntStats } from 'fs';
 import { dirname, join, relative } from 'path';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
+import { isFileBasedOrganizationMode } from '@bookorbit/types';
 
 import { classifyFile, DEFAULT_FORMAT_PRIORITY } from './lib/classify';
 import { clampIno } from './lib/walk';
@@ -338,12 +339,11 @@ export class FileEventProcessorService {
     }
 
     const settings = await this.scannerRepo.findLibrarySettings(rowLibraryId);
-    const newFolderPath =
-      settings?.organizationMode === 'book_per_file'
+    const newFolderPath = isFileBasedOrganizationMode(settings?.organizationMode)
+      ? newAbsolutePath
+      : dirname(newAbsolutePath) === libraryFolderPath
         ? newAbsolutePath
-        : dirname(newAbsolutePath) === libraryFolderPath
-          ? newAbsolutePath
-          : dirname(newAbsolutePath);
+        : dirname(newAbsolutePath);
     if (newFolderPath !== oldFolderPath) {
       const targetBooks = await this.scannerRepo.findBooksByFolderPath(newFolderPath, rowLibraryId);
       const hasFolderCollision = targetBooks.some((book) => book.id !== file.bookId && book.folderPath === newFolderPath);

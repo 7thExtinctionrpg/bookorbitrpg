@@ -6,6 +6,10 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Backend target for the dev proxy. Override with VITE_API_PROXY_TARGET when the
+// server runs on a non-default port (e.g. when 3000 is taken by another app).
+const API_PROXY_TARGET = process.env.VITE_API_PROXY_TARGET || 'http://localhost:3000'
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -133,7 +137,7 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: API_PROXY_TARGET,
         configure: (proxy) => {
           proxy.on('proxyReq', (proxyReq, req) => {
             if (req.headers.host) proxyReq.setHeader('x-forwarded-host', req.headers.host)
@@ -144,7 +148,7 @@ export default defineConfig({
         },
       },
       '/socket.io': {
-        target: 'http://localhost:3000',
+        target: API_PROXY_TARGET,
         ws: true,
         changeOrigin: true,
       },

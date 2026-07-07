@@ -431,6 +431,7 @@ function getErrorMessage(error: unknown): string {
 
 function normalizeOrganizationMode(mode: string | null | undefined): OrganizationMode {
   if (mode === 'book_per_file') return 'book_per_file';
+  if (mode === 'book_per_file_rpg') return 'book_per_file_rpg';
   return DEFAULT_LIBRARY_ORGANIZATION_MODE;
 }
 

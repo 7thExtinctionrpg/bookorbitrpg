@@ -4,7 +4,8 @@ import { flushPromises, mount } from '@vue/test-utils'
 import type { BookCard, SeriesBooksPage, SeriesDetail } from '@bookorbit/types'
 import SeriesDetailView from './SeriesDetailView.vue'
 
-const GROUP_BY_MEDIA_STORAGE_KEY = 'bookorbit:series-detail:group-by-media'
+const GROUP_BY_STORAGE_KEY = 'bookorbit:series-detail:group-by'
+const LEGACY_GROUP_BY_MEDIA_STORAGE_KEY = 'bookorbit:series-detail:group-by-media'
 
 class MockIntersectionObserver {
   observe = vi.fn<(target: Element) => void>()
@@ -304,7 +305,7 @@ describe('SeriesDetailView', () => {
   })
 
   it('shows grouped media sections with labels and counts when enabled', async () => {
-    localStorage.setItem(GROUP_BY_MEDIA_STORAGE_KEY, 'true')
+    localStorage.setItem(GROUP_BY_STORAGE_KEY, 'media')
     mocks.items = ref([
       makeBook({ id: 7, files: [{ id: 1, format: 'epub', role: 'primary', sizeBytes: null }] }),
       makeBook({ id: 8, files: [{ id: 2, format: 'pdf', role: 'primary', sizeBytes: null }] }),
@@ -317,9 +318,9 @@ describe('SeriesDetailView', () => {
     const wrapper = mountView()
     await nextTick()
 
-    const booksGroup = wrapper.get('[data-testid="series-media-group-books"]')
-    const audiobooksGroup = wrapper.get('[data-testid="series-media-group-audiobooks"]')
-    const comicsGroup = wrapper.get('[data-testid="series-media-group-comics"]')
+    const booksGroup = wrapper.get('[data-testid="series-book-group-books"]')
+    const audiobooksGroup = wrapper.get('[data-testid="series-book-group-audiobooks"]')
+    const comicsGroup = wrapper.get('[data-testid="series-book-group-comics"]')
 
     expect(wrapper.find('[data-testid="series-books-section-heading"]').exists()).toBe(false)
     expect(booksGroup.text()).toContain('Books')
@@ -348,19 +349,46 @@ describe('SeriesDetailView', () => {
     expect(wrapper.findAll('[data-testid="virtual-book-grid"]')).toHaveLength(1)
     expect(wrapper.get('[data-testid="series-books-section-heading"]').text()).toBe('Books')
 
-    await wrapper.get('[data-testid="series-group-by-media-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="series-group-by-select"]').setValue('media')
     await nextTick()
 
     expect(wrapper.find('[data-testid="series-books-section-heading"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="series-media-group-books"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="series-book-group-books"]').exists()).toBe(true)
     const grids = wrapper.findAll('[data-testid="virtual-book-grid"]')
     expect(grids).toHaveLength(3)
     expect(grids.map((grid) => grid.attributes('data-book-ids'))).toEqual(['7', '8', '9'])
-    expect(localStorage.getItem(GROUP_BY_MEDIA_STORAGE_KEY)).toBe('true')
+    expect(localStorage.getItem(GROUP_BY_STORAGE_KEY)).toBe('media')
   })
 
-  it('loads the stored group by media preference', async () => {
-    localStorage.setItem(GROUP_BY_MEDIA_STORAGE_KEY, 'true')
+  it('groups books by genre with a bucket for books without a genre', async () => {
+    mocks.items = ref([
+      makeBook({ id: 7, genres: ['Core Rules'] }),
+      makeBook({ id: 8, genres: ['Adventure', 'Core Rules'] }),
+      makeBook({ id: 9, genres: [] }),
+    ])
+    mocks.total = ref(3)
+    mocks.seriesInfo = ref({ ...makeSeriesInfo(), bookCount: 3 })
+
+    const wrapper = mountView()
+    await nextTick()
+
+    await wrapper.get('[data-testid="series-group-by-select"]').setValue('genre')
+    await nextTick()
+
+    // A book with multiple genres appears in each; groups are alphabetical, ungrouped last.
+    const adventure = wrapper.get('[data-testid="series-book-group-adventure"]')
+    const coreRules = wrapper.get('[data-testid="series-book-group-core rules"]')
+    const ungrouped = wrapper.get('[data-testid="series-book-group-__ungrouped__"]')
+    expect(adventure.text()).toContain('Adventure')
+    expect(adventure.get('[data-testid="virtual-book-grid"]').attributes('data-book-ids')).toBe('8')
+    expect(coreRules.get('[data-testid="virtual-book-grid"]').attributes('data-book-ids')).toBe('7,8')
+    expect(ungrouped.text()).toContain('No genre')
+    expect(ungrouped.get('[data-testid="virtual-book-grid"]').attributes('data-book-ids')).toBe('9')
+    expect(localStorage.getItem(GROUP_BY_STORAGE_KEY)).toBe('genre')
+  })
+
+  it('migrates the legacy group by media preference', async () => {
+    localStorage.setItem(LEGACY_GROUP_BY_MEDIA_STORAGE_KEY, 'true')
     mocks.items = ref([
       makeBook({ id: 7, files: [{ id: 1, format: 'epub', role: 'primary', sizeBytes: null }] }),
       makeBook({ id: 8, files: [{ id: 2, format: 'm4b', role: 'primary', sizeBytes: null }] }),
@@ -372,8 +400,8 @@ describe('SeriesDetailView', () => {
     await nextTick()
 
     expect(wrapper.find('[data-testid="series-books-section-heading"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="series-media-group-books"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="series-media-group-audiobooks"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="series-book-group-books"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="series-book-group-audiobooks"]').exists()).toBe(true)
     expect(wrapper.findAll('[data-testid="virtual-book-grid"]')).toHaveLength(2)
   })
 

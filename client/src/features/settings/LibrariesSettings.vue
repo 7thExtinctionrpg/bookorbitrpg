@@ -331,8 +331,14 @@ function coverRefreshLabel(libraryId: number): string {
 
                 <!-- Col 2 -->
                 <span class="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
-                  <component :is="lib.organizationMode === 'book_per_file' ? FileText : Folder" :size="11" class="shrink-0" />
-                  <span class="truncate">{{ lib.organizationMode === 'book_per_file' ? 'File mode' : 'Folder mode' }}</span>
+                  <component :is="lib.organizationMode === 'book_per_folder' ? Folder : FileText" :size="11" class="shrink-0" />
+                  <span class="truncate">{{
+                    lib.organizationMode === 'book_per_folder'
+                      ? 'Folder mode'
+                      : lib.organizationMode === 'book_per_file_rpg'
+                        ? 'RPG mode'
+                        : 'File mode'
+                  }}</span>
                 </span>
 
                 <Tooltip v-if="lib.folders.length > 0">

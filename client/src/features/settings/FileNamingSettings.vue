@@ -480,7 +480,13 @@ onUnmounted(() => {
                       lib.organizationMode === 'book_per_folder' ? 'text-blue-500 border-blue-500/40' : 'text-emerald-500 border-emerald-500/40'
                     "
                   >
-                    {{ lib.organizationMode === 'book_per_folder' ? 'Folder as Book' : 'File as Book' }}
+                    {{
+                      lib.organizationMode === 'book_per_folder'
+                        ? 'Folder as Book'
+                        : lib.organizationMode === 'book_per_file_rpg'
+                          ? 'File as RPG'
+                          : 'File as Book'
+                    }}
                   </Badge>
                 </div>
               </div>

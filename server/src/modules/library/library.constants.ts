@@ -2,7 +2,7 @@ import type { AccessLevel, CoverAspectRatio, OrganizationMode } from '@bookorbit
 
 export const LIBRARY_ACCESS_LEVELS = ['viewer', 'editor', 'owner'] as const satisfies readonly AccessLevel[];
 export const LIBRARY_COVER_ASPECT_RATIOS = ['2/3', '1/1'] as const satisfies readonly CoverAspectRatio[];
-export const LIBRARY_ORGANIZATION_MODES = ['book_per_file', 'book_per_folder'] as const satisfies readonly OrganizationMode[];
+export const LIBRARY_ORGANIZATION_MODES = ['book_per_file', 'book_per_folder', 'book_per_file_rpg'] as const satisfies readonly OrganizationMode[];
 
 export const DEFAULT_LIBRARY_ORGANIZATION_MODE: OrganizationMode = 'book_per_folder';
 export const DEFAULT_LIBRARY_COVER_ASPECT_RATIO: CoverAspectRatio = '2/3';
